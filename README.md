@@ -1,4 +1,4 @@
-# @cus/github-manager
+# @gaud_erp/github-manager
 
 Paperclip connector plugin for GitHub — repository listing, PR/issue sync, and webhook registration.
 
@@ -17,7 +17,7 @@ Paperclip connector plugin for GitHub — repository listing, PR/issue sync, and
 
 ## Repository
 
-Source: [felipeespitalher/github-manager](https://github.com/felipeespitalher/github-manager)
+Source: [gauderp/github-manager](https://github.com/gauderp/github-manager)
 
 ## Local development
 
@@ -32,7 +32,7 @@ paperclipai plugin install /absolute/path/to/plugins/github-manager
 After the package is published:
 
 ```bash
-paperclipai plugin install @cus/github-manager
+paperclipai plugin install @gaud_erp/github-manager@0.2.0
 ```
 
 Configure `github_token` in company secrets, then open the **GitHub** page in Paperclip.

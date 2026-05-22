@@ -1,9 +1,11 @@
 {
-  "name": "@cus/github-manager",
+  "name": "@gaud_erp/github-manager",
   "version": "0.2.0",
   "type": "module",
-  "private": true,
   "description": "Paperclip connector plugin for GitHub repos, PR/issue sync, and webhooks",
+  "publishConfig": {
+    "access": "public"
+  },
   "files": [
     "dist",
     "README.md"
@@ -27,12 +29,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/felipeespitalher/github-manager.git"
+    "url": "git+https://github.com/gauderp/github-manager.git"
   },
   "bugs": {
-    "url": "https://github.com/felipeespitalher/github-manager/issues"
+    "url": "https://github.com/gauderp/github-manager/issues"
   },
-  "homepage": "https://github.com/felipeespitalher/github-manager#readme",
+  "homepage": "https://github.com/gauderp/github-manager#readme",
   "dependencies": {
     "@paperclipai/plugin-sdk": "2026.517.0"
   },
