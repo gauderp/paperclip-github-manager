@@ -17,6 +17,7 @@ type HealthData = {
   checkedAt: string;
   message?: string;
   login?: string;
+  auth?: { configured: boolean; mode: "pat" | "secret-ref" | "none" };
 };
 
 type WebhookConfigData = {
@@ -177,7 +178,8 @@ function RepoTable({ repos }: { repos: GitHubRepoSummary[] }) {
 }
 
 export function DashboardWidget(_props: PluginWidgetProps) {
-  const { data, loading, error } = usePluginData<HealthData>("health");
+  const { companyParams } = useGithubCompany();
+  const { data, loading, error } = usePluginData<HealthData>("health", companyParams);
   const ping = usePluginAction("ping");
   const nav = useHostNavigation();
 
@@ -205,39 +207,138 @@ export function DashboardWidget(_props: PluginWidgetProps) {
 
 export function GitHubSettingsPage(_props: PluginPageProps) {
   const nav = useHostNavigation();
-  const { companyId } = useGithubCompany();
-  const { data: health, loading, error, refresh } = usePluginData<HealthData>("health");
+  const { companyId, companyParams } = useGithubCompany();
+  const { data: health, loading, error, refresh } = usePluginData<HealthData>("health", companyParams);
+  const saveGithubToken = usePluginAction("saveGithubToken");
+  const saveGithubSecretRef = usePluginAction("saveGithubSecretRef");
+  const clearGithubAuth = usePluginAction("clearGithubAuth");
+
+  const [pat, setPat] = useState("");
+  const [secretRef, setSecretRef] = useState("");
+  const [busy, setBusy] = useState<string | null>(null);
+  const [formMessage, setFormMessage] = useState<string | null>(null);
+
+  async function runSave(label: string, fn: () => Promise<unknown>) {
+    if (!companyId) {
+      setFormMessage("Selecione uma company no header do Paperclip.");
+      return;
+    }
+    setBusy(label);
+    setFormMessage(null);
+    try {
+      await fn();
+      setPat("");
+      setFormMessage(`${label} — OK. Testando conexão…`);
+      refresh();
+    } catch (err) {
+      setFormMessage(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(null);
+    }
+  }
 
   return (
     <div style={{ padding: "1.5rem", display: "grid", gap: "1rem", maxWidth: 720 }}>
       <header>
         <h1 style={{ margin: 0 }}>GitHub — Configurações</h1>
         <p style={{ margin: "0.5rem 0 0", opacity: 0.8 }}>
-          Conecte um Personal Access Token (PAT) da GitHub via secret da company.
+          Conecte um Personal Access Token (PAT) da GitHub. O token fica no estado do plugin por
+          company (o Paperclip ainda não resolve <code>secrets.read-ref</code> em workers — PAP-2394).
         </p>
       </header>
 
+      {!companyId ? (
+        <p style={{ margin: 0, opacity: 0.8 }}>Selecione uma company no header do Paperclip.</p>
+      ) : null}
+
       <section style={panelStyle}>
-        <strong>1. Criar secret da company</strong>
+        <strong>1. Personal Access Token (recomendado)</strong>
         <p style={{ margin: 0, opacity: 0.85 }}>
-          No Paperclip, abra <strong>Company → Settings</strong> e crie um secret com a chave exata{" "}
-          <code>{GITHUB_TOKEN_SECRET_KEY}</code> contendo o PAT da GitHub.
+          Gere um PAT em GitHub → Settings → Developer settings. Escopos: <code>repo</code>,{" "}
+          <code>read:user</code>; para webhooks também <code>admin:repo_hook</code>.
+        </p>
+        <label style={{ display: "grid", gap: "0.35rem" }}>
+          PAT
+          <input
+            type="password"
+            autoComplete="off"
+            value={pat}
+            onChange={(e) => setPat(e.target.value)}
+            placeholder="ghp_…"
+            style={{ maxWidth: 480, padding: "0.4rem 0.5rem" }}
+          />
+        </label>
+        <button
+          style={buttonStyle}
+          type="button"
+          disabled={Boolean(busy) || !companyId || !pat.trim()}
+          onClick={() =>
+            void runSave("Salvar token", () =>
+              saveGithubToken({ companyId: companyId!, token: pat })
+            )
+          }
+        >
+          Salvar token
+        </button>
+      </section>
+
+      <section style={panelStyle}>
+        <strong>2. Secret ID (futuro)</strong>
+        <p style={{ margin: 0, opacity: 0.85 }}>
+          Se você já criou um secret em <strong>Company → Settings</strong> (chave{" "}
+          <code>{GITHUB_TOKEN_SECRET_KEY}</code>), copie o <strong>ID (UUID)</strong> do secret — não
+          basta a chave. Quando o Paperclip reabilitar secret refs, este campo passará a funcionar
+          sem colar o PAT aqui.
         </p>
         <a
           {...nav.linkProps(PATHS.companySecrets)}
           className={sidebarLinkClass}
-          style={{ display: "inline-flex", width: "auto", marginTop: "0.5rem" }}
+          style={{ display: "inline-flex", width: "auto", marginTop: "0.25rem" }}
         >
           Abrir Company Settings
         </a>
-        <p style={{ margin: "0.75rem 0 0", fontSize: "0.85rem", opacity: 0.75 }}>
-          Escopos recomendados: <code>repo</code>, <code>read:user</code>; para webhooks também{" "}
-          <code>admin:repo_hook</code> nos repositórios alvo.
-        </p>
+        <label style={{ display: "grid", gap: "0.35rem", marginTop: "0.75rem" }}>
+          Secret ID (UUID)
+          <input
+            value={secretRef}
+            onChange={(e) => setSecretRef(e.target.value)}
+            placeholder="00000000-0000-0000-0000-000000000000"
+            style={{ maxWidth: 480, padding: "0.4rem 0.5rem", fontFamily: "monospace" }}
+          />
+        </label>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
+          <button
+            style={buttonStyle}
+            type="button"
+            disabled={Boolean(busy) || !companyId || !secretRef.trim()}
+            onClick={() =>
+              void runSave("Salvar Secret ID", () =>
+                saveGithubSecretRef({ companyId: companyId!, secretRef })
+              )
+            }
+          >
+            Salvar Secret ID
+          </button>
+          <button
+            style={buttonStyle}
+            type="button"
+            disabled={Boolean(busy) || !companyId}
+            onClick={() =>
+              void runSave("Limpar credenciais", () => clearGithubAuth({ companyId: companyId! }))
+            }
+          >
+            Limpar
+          </button>
+        </div>
       </section>
 
       <section style={panelStyle}>
-        <strong>2. Testar conexão</strong>
+        <strong>3. Testar conexão</strong>
+        {health?.auth ? (
+          <div style={{ fontSize: "0.85rem", opacity: 0.75 }}>
+            Credencial: {health.auth.configured ? health.auth.mode : "nenhuma"}
+          </div>
+        ) : null}
         {loading ? <div>Verificando...</div> : null}
         {error ? <div>Erro: {error.message}</div> : null}
         {health ? (
@@ -252,8 +353,13 @@ export function GitHubSettingsPage(_props: PluginPageProps) {
             </div>
           </div>
         ) : null}
-        <button style={buttonStyle} type="button" onClick={() => refresh()}>
-          Testar novamente
+        <button
+          style={buttonStyle}
+          type="button"
+          disabled={Boolean(busy) || !companyId}
+          onClick={() => refresh()}
+        >
+          Testar conexão
         </button>
         {health?.status === "ok" ? (
           <p style={{ margin: 0, color: "inherit", opacity: 0.85 }}>
@@ -263,9 +369,8 @@ export function GitHubSettingsPage(_props: PluginPageProps) {
         ) : null}
       </section>
 
-      {!companyId ? (
-        <p style={{ margin: 0, opacity: 0.8 }}>Selecione uma company no header do Paperclip.</p>
-      ) : null}
+      {formMessage ? <div>{formMessage}</div> : null}
+      {busy ? <div>Executando: {busy}…</div> : null}
     </div>
   );
 }
@@ -274,13 +379,13 @@ export function GitHubReposPage(_props: PluginPageProps) {
   const nav = useHostNavigation();
   const { companyId, companyParams } = useGithubCompany();
   const { data: health, loading: healthLoading, error: healthError } =
-    usePluginData<HealthData>("health");
+    usePluginData<HealthData>("health", companyParams);
   const {
     data: reposData,
     loading: reposLoading,
     error: reposError,
     refresh: refreshRepos
-  } = usePluginData<ReposData>("repos");
+  } = usePluginData<ReposData>("repos", companyParams);
   const {
     data: webhookData,
     loading: webhookLoading,
@@ -329,8 +434,7 @@ export function GitHubReposPage(_props: PluginPageProps) {
         <section style={panelStyle}>
           <strong>Token não configurado</strong>
           <p style={{ margin: 0 }}>
-            <a {...nav.linkProps(PATHS.settings)}>Abrir Configurações</a> e cadastre o secret{" "}
-            <code>{GITHUB_TOKEN_SECRET_KEY}</code>.
+            <a {...nav.linkProps(PATHS.settings)}>Abrir Configurações</a> e salve um PAT da GitHub.
           </p>
         </section>
       ) : null}
@@ -432,7 +536,7 @@ export function GitHubReposPage(_props: PluginPageProps) {
 export function GitHubPullRequestsPage(_props: PluginPageProps) {
   const nav = useHostNavigation();
   const { companyId, companyParams } = useGithubCompany();
-  const { data: health } = usePluginData<HealthData>("health");
+  const { data: health } = usePluginData<HealthData>("health", companyParams);
   const {
     data: syncOverview,
     loading: syncLoading,

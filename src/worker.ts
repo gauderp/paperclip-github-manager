@@ -5,12 +5,17 @@ import {
   type PluginWebhookInput
 } from "@paperclipai/plugin-sdk";
 import {
+  clearGithubAuth,
+  getGithubAuthStatus,
+  resolveGithubToken,
+  saveGithubPat,
+  saveGithubSecretRef
+} from "./github-config.js";
+import {
   buildInboundWebhookUrl,
   githubFetch,
-  GITHUB_API,
   GITHUB_WEBHOOK_ENDPOINT,
-  parseRepoFullName,
-  resolveGithubToken
+  parseRepoFullName
 } from "./github-api.js";
 import type {
   GitHubIssueSummary,
@@ -51,20 +56,21 @@ async function loadWebhookConfig(
   return (raw as GitHubWebhookConfig | null) ?? null;
 }
 
-async function listRepos(ctx: PluginContext): Promise<ReposData> {
+async function listRepos(ctx: PluginContext, companyId: string): Promise<ReposData> {
   const checkedAt = new Date().toISOString();
-  const token = await resolveGithubToken(ctx);
+  const token = await resolveGithubToken(ctx, companyId);
   if (!token) {
     return {
       status: "degraded",
       checkedAt,
-      message: "Configure github_token secret to list repositories",
+      message: "Configure o token GitHub em Configurações (PAT ou Secret ID)",
       repos: []
     };
   }
 
   const res = await githubFetch(
     ctx,
+    token,
     `/user/repos?per_page=30&sort=updated&affiliation=owner,organization_member`
   );
   if (!res.ok) {
@@ -103,17 +109,19 @@ async function resolveTrackedRepos(ctx: PluginContext, companyId: string): Promi
     return tracked.filter((r): r is string => typeof r === "string").slice(0, MAX_REPOS_PER_SYNC);
   }
 
-  const reposData = await listRepos(ctx);
+  const reposData = await listRepos(ctx, companyId);
   return reposData.repos.slice(0, MAX_REPOS_PER_SYNC).map((r) => r.fullName);
 }
 
 async function fetchPullRequestsForRepo(
   ctx: PluginContext,
+  token: string,
   repoFullName: string
 ): Promise<GitHubPullRequestSummary[]> {
   const { owner, repo } = parseRepoFullName(repoFullName);
   const res = await githubFetch(
     ctx,
+    token,
     `/repos/${owner}/${repo}/pulls?state=open&per_page=${MAX_ITEMS_PER_REPO}&sort=updated&direction=desc`
   );
   if (!res.ok) {
@@ -142,11 +150,13 @@ async function fetchPullRequestsForRepo(
 
 async function fetchIssuesForRepo(
   ctx: PluginContext,
+  token: string,
   repoFullName: string
 ): Promise<GitHubIssueSummary[]> {
   const { owner, repo } = parseRepoFullName(repoFullName);
   const res = await githubFetch(
     ctx,
+    token,
     `/repos/${owner}/${repo}/issues?state=open&per_page=${MAX_ITEMS_PER_REPO}&sort=updated&direction=desc`
   );
   if (!res.ok) {
@@ -181,9 +191,9 @@ async function runSync(
   companyId: string,
   mode: "pullRequests" | "issues" | "all"
 ): Promise<GitHubSyncCache> {
-  const token = await resolveGithubToken(ctx);
+  const token = await resolveGithubToken(ctx, companyId);
   if (!token) {
-    throw new Error("Configure github_token secret before syncing");
+    throw new Error("Configure o token GitHub em Configurações antes de sincronizar");
   }
 
   const repos = await resolveTrackedRepos(ctx, companyId);
@@ -201,10 +211,12 @@ async function runSync(
   for (const repoFullName of repos) {
     try {
       if (mode === "pullRequests" || mode === "all") {
-        pullRequests = pullRequests.concat(await fetchPullRequestsForRepo(ctx, repoFullName));
+        pullRequests = pullRequests.concat(
+          await fetchPullRequestsForRepo(ctx, token, repoFullName)
+        );
       }
       if (mode === "issues" || mode === "all") {
-        issues = issues.concat(await fetchIssuesForRepo(ctx, repoFullName));
+        issues = issues.concat(await fetchIssuesForRepo(ctx, token, repoFullName));
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -230,14 +242,14 @@ async function runSync(
 
 async function buildSyncOverview(ctx: PluginContext, companyId: string): Promise<SyncOverviewData> {
   const checkedAt = new Date().toISOString();
-  const token = await resolveGithubToken(ctx);
+  const token = await resolveGithubToken(ctx, companyId);
   const cache = await loadSyncCache(ctx, companyId);
 
   if (!token) {
     return {
       status: "degraded",
       checkedAt,
-      message: "Configure github_token secret to sync PRs and issues",
+      message: "Configure o token GitHub em Configurações para sincronizar PRs e issues",
       lastSyncedAt: cache?.syncedAt ?? null,
       pullRequestCount: cache?.pullRequests.length ?? 0,
       issueCount: cache?.issues.length ?? 0,
@@ -280,9 +292,9 @@ async function registerGithubWebhook(
   repoFullName: string,
   events: string[]
 ): Promise<GitHubWebhookConfig> {
-  const token = await resolveGithubToken(ctx);
+  const token = await resolveGithubToken(ctx, companyId);
   if (!token) {
-    throw new Error("Configure github_token secret before registering webhooks");
+    throw new Error("Configure o token GitHub em Configurações antes de registrar webhooks");
   }
 
   const pluginId = ctx.manifest.id;
@@ -299,7 +311,7 @@ async function registerGithubWebhook(
     }
   };
 
-  const res = await githubFetch(ctx, `/repos/${owner}/${repo}/hooks`, {
+  const res = await githubFetch(ctx, token, `/repos/${owner}/${repo}/hooks`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload)
@@ -382,34 +394,33 @@ const plugin = definePlugin({
       ctx.logger.info("GitHub plugin observed issue.created", { issueId });
     });
 
-    ctx.data.register("health", async () => {
-      let token: string | null = null;
-      try {
-        token = await ctx.secrets.resolve("github_token");
-      } catch {
-        token = null;
+    ctx.data.register("health", async ({ companyId }) => {
+      if (!companyId) {
+        throw new Error("companyId is required");
       }
+      const cid = String(companyId);
+      const auth = await getGithubAuthStatus(ctx, cid);
+      const token = await resolveGithubToken(ctx, cid);
       if (!token) {
         return {
           status: "degraded" as const,
           checkedAt: new Date().toISOString(),
-          message: "Configure github_token secret to enable API calls"
+          message:
+            auth.mode === "secret-ref"
+              ? "Secret ID salvo, mas o Paperclip ainda não resolve secret refs em plugins — cole o PAT abaixo ou aguarde PAP-2394"
+              : "Cole um Personal Access Token (PAT) em Configurações e clique em Salvar",
+          auth
         };
       }
 
-      const res = await ctx.http.fetch(`${GITHUB_API}/user`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: "application/vnd.github+json",
-          "X-GitHub-Api-Version": "2022-11-28"
-        }
-      });
+      const res = await githubFetch(ctx, token, "/user");
 
       if (!res.ok) {
         return {
           status: "error" as const,
           checkedAt: new Date().toISOString(),
-          message: `GitHub API returned ${res.status}`
+          message: `GitHub API retornou ${res.status} — verifique escopos do PAT`,
+          auth
         };
       }
 
@@ -417,11 +428,17 @@ const plugin = definePlugin({
       return {
         status: "ok" as const,
         checkedAt: new Date().toISOString(),
-        login: user.login ?? "unknown"
+        login: user.login ?? "unknown",
+        auth
       };
     });
 
-    ctx.data.register("repos", async () => listRepos(ctx));
+    ctx.data.register("repos", async ({ companyId }) => {
+      if (!companyId) {
+        throw new Error("companyId is required");
+      }
+      return listRepos(ctx, String(companyId));
+    });
 
     ctx.data.register("syncOverview", async ({ companyId }) => {
       if (!companyId) {
@@ -444,6 +461,32 @@ const plugin = definePlugin({
 
     ctx.actions.register("ping", async () => {
       return { pong: true, at: new Date().toISOString() };
+    });
+
+    ctx.actions.register("saveGithubToken", async (input) => {
+      const companyId = requireCompanyId(input);
+      const token = (input as { token?: string })?.token;
+      if (typeof token !== "string") {
+        throw new Error("token is required");
+      }
+      await saveGithubPat(ctx, companyId, token);
+      return { saved: true, at: new Date().toISOString() };
+    });
+
+    ctx.actions.register("saveGithubSecretRef", async (input) => {
+      const companyId = requireCompanyId(input);
+      const secretRef = (input as { secretRef?: string })?.secretRef;
+      if (typeof secretRef !== "string") {
+        throw new Error("secretRef is required");
+      }
+      await saveGithubSecretRef(ctx, companyId, secretRef);
+      return { saved: true, at: new Date().toISOString() };
+    });
+
+    ctx.actions.register("clearGithubAuth", async (input) => {
+      const companyId = requireCompanyId(input);
+      await clearGithubAuth(ctx, companyId);
+      return { cleared: true, at: new Date().toISOString() };
     });
 
     ctx.actions.register("setTrackedRepos", async (input) => {

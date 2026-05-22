@@ -34,10 +34,16 @@ describe("github-manager plugin", () => {
       harness.getState({ scopeKind: "issue", scopeId: "iss_1", stateKey: "seen" })
     ).toBe(true);
 
-    const health = await harness.getData<{ status: string }>("health");
+    harness.seed({ companies: [{ id: "co_health", name: "CUS", issuePrefix: "CUS" } as never] });
+
+    const health = await harness.getData<{ status: string }>("health", {
+      companyId: "co_health"
+    });
     expect(["degraded", "error", "ok"]).toContain(health.status);
 
-    const repos = await harness.getData<{ status: string; repos: unknown[] }>("repos");
+    const repos = await harness.getData<{ status: string; repos: unknown[] }>("repos", {
+      companyId: "co_health"
+    });
     expect(["degraded", "error", "ok"]).toContain(repos.status);
     expect(Array.isArray(repos.repos)).toBe(true);
 

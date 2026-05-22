@@ -3,29 +3,14 @@ import type { PluginContext } from "@paperclipai/plugin-sdk";
 export const GITHUB_API = "https://api.github.com";
 export const GITHUB_WEBHOOK_ENDPOINT = "github-events";
 
-export type GitHubFetchContext = Pick<PluginContext, "http" | "secrets" | "logger">;
-
-export async function resolveGithubToken(ctx: GitHubFetchContext): Promise<string | null> {
-  try {
-    return await ctx.secrets.resolve("github_token");
-  } catch {
-    return null;
-  }
-}
+export type GitHubFetchContext = Pick<PluginContext, "http" | "logger">;
 
 export async function githubFetch(
   ctx: GitHubFetchContext,
+  token: string,
   path: string,
   init?: RequestInit
 ): Promise<Response> {
-  const token = await resolveGithubToken(ctx);
-  if (!token) {
-    return new Response(JSON.stringify({ message: "github_token not configured" }), {
-      status: 401,
-      headers: { "Content-Type": "application/json" }
-    });
-  }
-
   const url = path.startsWith("http") ? path : `${GITHUB_API}${path}`;
   return ctx.http.fetch(url, {
     ...init,
