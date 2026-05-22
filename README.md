@@ -27,15 +27,30 @@ npm run dev
 paperclipai plugin install /absolute/path/to/plugins/github-manager
 ```
 
+## Releases e npmjs
+
+Cada **release no GitHub** (tag `v*`, ex. `v0.2.2`) dispara o workflow [publish-npm.yml](.github/workflows/publish-npm.yml) e publica `@gaud_erp/github-manager` no [npmjs](https://www.npmjs.com/package/@gaud_erp/github-manager).
+
+### Primeira vez / credencial
+
+1. No repo **gauderp/github-manager** → Settings → Secrets → Actions: criar `NPM_TOKEN` (token npm com publish no escopo `@gaud_erp`, bypass 2FA se a org exigir).
+2. Criar release no GitHub: tag `v0.2.2` apontando para `main` (Actions roda typecheck, test, build, `npm publish`).
+3. Confirmar: `npm view @gaud_erp/github-manager version`
+
+### Próximas versões
+
+1. Bump `version` em `package.json` + `src/manifest.ts`
+2. Commit, push `main`
+3. GitHub → **Create release** com tag `vX.Y.Z` (mesmo número da versão do pacote)
+
 ## Production install (npm)
 
-After the package is published:
-
 ```bash
-paperclipai plugin install @gaud_erp/github-manager@0.2.0
+paperclipai plugin install @gaud_erp/github-manager@0.2.2 --api-base http://127.0.0.1:3100
+paperclipai plugin inspect cus.github-manager --api-base http://127.0.0.1:3100
 ```
 
-Configure `github_token` in company secrets, then open the **GitHub** page in Paperclip.
+Configure o company secret `github_token`, depois use **GitHub → Configurações** na sidebar do Paperclip.
 
 ## Build
 
