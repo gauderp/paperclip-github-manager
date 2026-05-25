@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(rtk ls:*)",
+      "WebFetch(domain:www.npmjs.com)",
+      "Bash(fly deploy:*)",
+      "Bash(fly status:*)",
+      "Bash(MSYS_NO_PATHCONV=1 rtk docker:*)",
+      "Bash(fly certs:*)",
+      "Bash(rtk grep:*)",
+      "Bash(npm info:*)",
+      "Bash(rtk find:*)",
+      "Bash(rtk read:*)",
+      "Bash(npm search:*)",
+      "WebFetch(domain:docs.paperclip.ing)",
+      "WebFetch(domain:api.github.com)",
+      "Bash(rtk git:*)"
+    ]
+  }
+}
