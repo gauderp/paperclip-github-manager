@@ -1,0 +1,52 @@
+{
+  "$meta": {
+    "version": 1,
+    "updatedAt": "2026-05-24T00:00:00.000Z",
+    "source": "onboard"
+  },
+  "database": {
+    "mode": "postgres",
+    "connectionString": "postgresql://postgres.dnarqdmbmnjbcingpuaz:713GdXQerUv2yr4PJL8vttruBhqGqwhg6@aws-1-sa-east-1.pooler.supabase.com:6543/postgres"
+  },
+  "logging": {
+    "mode": "file",
+    "logDir": "/app/data/instances/default/logs"
+  },
+  "server": {
+    "deploymentMode": "authenticated",
+    "exposure": "public",
+    "bind": "custom",
+    "customBindHost": "0.0.0.0",
+    "host": "0.0.0.0",
+    "port": 3100,
+    "allowedHostnames": [],
+    "serveUi": true
+  },
+  "auth": {
+    "baseUrlMode": "explicit",
+    "publicBaseUrl": "https://paperclip.gaud.app",
+    "disableSignUp": true
+  },
+  "telemetry": {
+    "enabled": false
+  },
+  "storage": {
+    "provider": "local_disk",
+    "localDisk": {
+      "baseDir": "/app/data/instances/default/data/storage"
+    },
+    "s3": {
+      "bucket": "paperclip",
+      "region": "us-east-1",
+      "prefix": "",
+      "forcePathStyle": false
+    }
+  },
+  "secrets": {
+    "provider": "local_encrypted",
+    "strictMode": false,
+    "localEncrypted": {
+      "keyFilePath": "/app/data/instances/default/secrets/master.key"
+    }
+  }
+}
