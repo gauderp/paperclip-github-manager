@@ -97,6 +97,10 @@ npm pack             # gera .tgz
 ### Via CLI
 
 ```bash
+# pelo nome do pacote npm
+paperclipai plugin install @gaud_erp/paperclip-github-manager
+
+# ou pelo arquivo .tgz local
 paperclipai plugin install ./gaud_erp-paperclip-github-manager-1.0.0.tgz
 ```
 
@@ -130,3 +134,31 @@ Configure um webhook no GitHub apontando para:
 https://<paperclip-host>/plugins/cus.github-manager/webhooks/github-events
 ```
 Eventos: `pull_request`, `issues`
+
+## Uso
+
+### Repositórios
+
+Após configurar o token, acesse **GitHub > Repositórios** para ver a lista de repos rastreados. Use o botão **Sync** para forçar uma sincronização completa. O sync incremental roda automaticamente a cada 5 minutos.
+
+### Pull Requests
+
+A página **GitHub > Pull Requests** lista todos os PRs sincronizados com filtros por repositório, estado e autor. PRs são vinculados automaticamente a cards do Paperclip quando o branch ou título contém padrões como `CARD-123` ou `#456`.
+
+### Review por Agentes
+
+O agente **GitHub Code Reviewer** pode revisar PRs usando as 6 tools registradas:
+
+1. Atribua um PR a um agente no Paperclip
+2. O agente usa `github_get_pull_request_diff` para obter o diff
+3. Lê arquivos com `github_read_file_content` quando precisa de contexto
+4. Posta comentários inline com `github_create_review_comment`
+5. Finaliza com `github_submit_pr_review` (approve, request changes ou comment)
+
+### Dashboard
+
+O widget **GitHub Status** no dashboard mostra contadores de PRs abertos, issues e último sync.
+
+### Detail Tab
+
+Dentro de qualquer card do Paperclip, a aba **GitHub** mostra PRs vinculados àquele card com status e links diretos para o GitHub.
