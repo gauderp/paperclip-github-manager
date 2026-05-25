@@ -1,6 +1,6 @@
 import type { PaperclipPluginManifestV1 } from "@paperclipai/plugin-sdk";
 
-export const manifest: PaperclipPluginManifestV1 = {
+const manifest: PaperclipPluginManifestV1 = {
   id: "cus.github-manager",
   version: "1.0.0",
   apiVersion: 1,
@@ -200,3 +200,5 @@ export const manifest: PaperclipPluginManifestV1 = {
     ],
   },
 };
+
+export default manifest;
