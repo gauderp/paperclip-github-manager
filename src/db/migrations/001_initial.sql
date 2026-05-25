@@ -1,5 +1,7 @@
-CREATE TABLE IF NOT EXISTS gh_repositories (
-  id            INTEGER PRIMARY KEY,
+CREATE SCHEMA IF NOT EXISTS cus_github_manager;
+
+CREATE TABLE IF NOT EXISTS cus_github_manager.gh_repositories (
+  id            BIGINT PRIMARY KEY,
   full_name     TEXT NOT NULL UNIQUE,
   owner         TEXT NOT NULL,
   name          TEXT NOT NULL,
@@ -13,9 +15,9 @@ CREATE TABLE IF NOT EXISTS gh_repositories (
   synced_at     TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS gh_pull_requests (
-  id            INTEGER PRIMARY KEY,
-  repo_id       INTEGER NOT NULL REFERENCES gh_repositories(id) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS cus_github_manager.gh_pull_requests (
+  id            BIGINT PRIMARY KEY,
+  repo_id       BIGINT NOT NULL REFERENCES cus_github_manager.gh_repositories(id) ON DELETE CASCADE,
   number        INTEGER NOT NULL,
   title         TEXT NOT NULL,
   body          TEXT,
@@ -33,9 +35,9 @@ CREATE TABLE IF NOT EXISTS gh_pull_requests (
   UNIQUE(repo_id, number)
 );
 
-CREATE TABLE IF NOT EXISTS gh_issues (
-  id            INTEGER PRIMARY KEY,
-  repo_id       INTEGER NOT NULL REFERENCES gh_repositories(id) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS cus_github_manager.gh_issues (
+  id            BIGINT PRIMARY KEY,
+  repo_id       BIGINT NOT NULL REFERENCES cus_github_manager.gh_repositories(id) ON DELETE CASCADE,
   number        INTEGER NOT NULL,
   title         TEXT NOT NULL,
   body          TEXT,
@@ -49,17 +51,17 @@ CREATE TABLE IF NOT EXISTS gh_issues (
   UNIQUE(repo_id, number)
 );
 
-CREATE TABLE IF NOT EXISTS gh_pr_card_links (
-  id            INTEGER PRIMARY KEY AUTOINCREMENT,
-  pr_id         INTEGER NOT NULL REFERENCES gh_pull_requests(id) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS cus_github_manager.gh_pr_card_links (
+  id            SERIAL PRIMARY KEY,
+  pr_id         BIGINT NOT NULL REFERENCES cus_github_manager.gh_pull_requests(id) ON DELETE CASCADE,
   issue_id      TEXT NOT NULL,
   link_source   TEXT NOT NULL CHECK(link_source IN ('webhook', 'pattern', 'manual')),
   created_at    TEXT NOT NULL,
   UNIQUE(pr_id, issue_id)
 );
 
-CREATE TABLE IF NOT EXISTS gh_sync_log (
-  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+CREATE TABLE IF NOT EXISTS cus_github_manager.gh_sync_log (
+  id            SERIAL PRIMARY KEY,
   scope         TEXT NOT NULL CHECK(scope IN ('full', 'incremental', 'webhook')),
   repos_synced  INTEGER NOT NULL DEFAULT 0,
   prs_synced    INTEGER NOT NULL DEFAULT 0,
