@@ -3,21 +3,24 @@ set -e
 
 # Inject Claude Code credentials from secret env var
 if [ -n "$CLAUDE_CREDENTIALS_JSON" ]; then
-  mkdir -p /root/.claude
-  echo "$CLAUDE_CREDENTIALS_JSON" > /root/.claude/.credentials.json
+  mkdir -p /home/paperclip/.claude
+  echo "$CLAUDE_CREDENTIALS_JSON" > /home/paperclip/.claude/.credentials.json
+  chown -R paperclip:paperclip /home/paperclip/.claude
   echo "Claude Code credentials injected"
 fi
 
 # Inject Cursor credentials from secret env vars
 if [ -n "$CURSOR_AUTH_JSON" ]; then
-  mkdir -p /root/.cursor
-  echo "$CURSOR_AUTH_JSON" > /root/.cursor/auth.json
+  mkdir -p /home/paperclip/.cursor
+  echo "$CURSOR_AUTH_JSON" > /home/paperclip/.cursor/auth.json
+  chown -R paperclip:paperclip /home/paperclip/.cursor
   echo "Cursor auth.json injected"
 fi
 
 if [ -n "$CURSOR_CLI_CONFIG_JSON" ]; then
-  mkdir -p /root/.cursor
-  echo "$CURSOR_CLI_CONFIG_JSON" > /root/.cursor/cli-config.json
+  mkdir -p /home/paperclip/.cursor
+  echo "$CURSOR_CLI_CONFIG_JSON" > /home/paperclip/.cursor/cli-config.json
+  chown -R paperclip:paperclip /home/paperclip/.cursor
   echo "Cursor cli-config.json injected"
 fi
 
@@ -26,8 +29,11 @@ if [ -n "$GH_TOKEN" ]; then
   echo "GitHub CLI token configured via GH_TOKEN"
 fi
 
-# Start Paperclip in background, install pending plugins, then foreground it
-paperclipai run --data-dir /app/data --no-repair &
+# Ensure data dir is writable by paperclip user
+chown -R paperclip:paperclip /app/data
+
+# Start Paperclip in background, install plugins, then wait
+gosu paperclip paperclipai run --data-dir /app/data --no-repair &
 PAPERCLIP_PID=$!
 
 # Wait for Paperclip API to be ready
@@ -41,13 +47,13 @@ for i in $(seq 1 60); do
 done
 
 # Install staged plugins using API key
-API_KEY="pcp_board_90394c8d61bdd3653c607ed2eca190cc64ef9ea016e271c0"
+API_KEY="${PAPERCLIP_BOARD_API_KEY:-pcp_board_90394c8d61bdd3653c607ed2eca190cc64ef9ea016e271c0}"
 for tgz in /app/plugins/*.tgz; do
   [ -f "$tgz" ] || continue
   plugin_name=$(basename "$tgz" .tgz)
   echo "Installing plugin: $plugin_name"
 
-  # Extract tgz to temp dir (API needs a directory, not a tarball)
+  # Extract tgz to temp dir
   PLUGIN_DIR="/tmp/plugin-install-${plugin_name}"
   rm -rf "$PLUGIN_DIR"
   mkdir -p "$PLUGIN_DIR"
@@ -67,28 +73,21 @@ for tgz in /app/plugins/*.tgz; do
 
   if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "201" ]; then
     echo "Plugin $plugin_name installed successfully"
-    rm "$tgz"
   elif echo "$BODY" | grep -q "already installed"; then
     echo "Plugin $plugin_name already installed, attempting reinstall..."
-    # Get plugin ID from the list
-    PLUGINS_RESULT=$(curl -s -H "Authorization: Bearer $API_KEY" http://127.0.0.1:3100/api/plugins)
-    PLUGIN_ID=$(echo "$PLUGINS_RESULT" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+    # Uninstall via API
+    PLUGINS_LIST=$(curl -s -H "Authorization: Bearer $API_KEY" http://127.0.0.1:3100/api/plugins)
+    PLUGIN_ID=$(echo "$PLUGINS_LIST" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
     if [ -n "$PLUGIN_ID" ]; then
-      # Uninstall then reinstall
       curl -s -X DELETE "http://127.0.0.1:3100/api/plugins/$PLUGIN_ID" \
-        -H "Authorization: Bearer $API_KEY"
-      echo "Uninstalled plugin $PLUGIN_ID, reinstalling..."
+        -H "Authorization: Bearer $API_KEY" > /dev/null
       sleep 2
       RESULT2=$(curl -s -w "\n%{http_code}" -X POST http://127.0.0.1:3100/api/plugins/install \
         -H "Content-Type: application/json" \
         -H "Authorization: Bearer $API_KEY" \
         -d "{\"packageName\":\"$PKG_DIR\",\"isLocalPath\":true}")
       HTTP_CODE2=$(echo "$RESULT2" | tail -1)
-      BODY2=$(echo "$RESULT2" | sed '$d')
-      echo "Reinstall returned $HTTP_CODE2: $BODY2"
-      if [ "$HTTP_CODE2" = "200" ] || [ "$HTTP_CODE2" = "201" ]; then
-        rm "$tgz"
-      fi
+      echo "Reinstall returned $HTTP_CODE2"
     fi
   else
     echo "Plugin $plugin_name install returned $HTTP_CODE: $BODY"
