@@ -70,7 +70,7 @@ export function GitHubReposPage() {
                   setGraphLoading(repo.fullName);
                   try {
                     await generateGraph({ companyId, repoFullName: repo.fullName, level: "code" });
-                    nav.navigate(PATHS.graphs);
+                    nav.navigate(`${PATHS.graphs}?repo=${encodeURIComponent(repo.fullName)}`);
                   } catch (err) {
                     console.error(err);
                   } finally {

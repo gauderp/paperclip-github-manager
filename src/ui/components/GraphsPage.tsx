@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useHostContext, usePluginAction } from "@paperclipai/plugin-sdk/ui";
 import { layoutStack, cardStyle, buttonStyle, primaryButtonStyle } from "./shared.js";
 import type { GraphData } from "../../graphify/graph-generator.js";
@@ -72,8 +72,25 @@ export function GitHubGraphsPage() {
   const [graphData, setGraphData] = useState<GraphData | null>(null);
   const [loading, setLoading] = useState(false);
   const [repoInput, setRepoInput] = useState("");
+  const [autoLoaded, setAutoLoaded] = useState(false);
 
   const generateGraph = usePluginAction("generate-graph");
+
+  // Auto-load graph from query param (when coming from Repos page Graphify button)
+  useEffect(() => {
+    if (autoLoaded || !companyId) return;
+    const params = new URLSearchParams(window.location.search);
+    const repo = params.get("repo");
+    if (repo) {
+      setRepoInput(repo);
+      setAutoLoaded(true);
+      setLoading(true);
+      generateGraph({ companyId, repoFullName: repo, level: "code" })
+        .then((result) => setGraphData(result as GraphData))
+        .catch(console.error)
+        .finally(() => setLoading(false));
+    }
+  }, [companyId, autoLoaded]);
 
   if (!companyId) return <div style={layoutStack}>Selecione uma empresa.</div>;
 
