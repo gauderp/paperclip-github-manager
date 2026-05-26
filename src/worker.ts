@@ -133,23 +133,28 @@ const plugin = definePlugin({
     });
 
     ctx.actions.register("request-review", async ({ companyId, prId, repoFullName, prNumber }) => {
-      const repo = await getRepoByFullName(ctx.db, repoFullName as string);
-      if (!repo) throw new Error(`Repo ${repoFullName} not found`);
-
       const [owner, repoName] = (repoFullName as string).split("/");
 
-      // Use the managed github-reviewer agent
-      const agent = await ctx.agents.managed.get("github-reviewer", companyId as string);
+      const issue = await ctx.issues.create({
+        companyId: companyId as string,
+        title: `Code Review: ${repoFullName}#${prNumber}`,
+        description: [
+          `Review PR #${prNumber} in ${repoFullName}.`,
+          ``,
+          `## Instructions`,
+          `1. Use \`github_get_repo_structure\` with repo_full_name="${repoFullName}" to understand the codebase`,
+          `2. Use \`github_get_pull_request_diff\` with owner="${owner}", repo="${repoName}", pull_number=${prNumber} to get the diff`,
+          `3. Read relevant files with \`github_read_file_content\` for context`,
+          `4. Post inline comments with \`github_create_review_comment\``,
+          `5. Submit your verdict with \`github_submit_pr_review\``,
+          ``,
+          `PR link: https://github.com/${repoFullName}/pull/${prNumber}`,
+        ].join("\n"),
+        originKind: "plugin_github_review",
+        originId: `${repoFullName}#${prNumber}`,
+      });
 
-      await ctx.agents.invoke(
-        agent.agentId,
-        companyId as string,
-        {
-          prompt: `Review PR #${prNumber} in ${repoFullName}.\n\n1. Use github_get_repo_structure with repo_full_name="${repoFullName}" to understand the codebase\n2. Use github_get_pull_request_diff with owner="${owner}", repo="${repoName}", pull_number=${prNumber} to get the diff\n3. Read relevant files with github_read_file_content for context\n4. Post inline comments with github_create_review_comment\n5. Submit your verdict with github_submit_pr_review`,
-        },
-      );
-
-      return { ok: true };
+      return { ok: true, issueId: issue.id };
     });
 
     ctx.actions.register("run-quick-check", async ({ companyId, repoFullName, prNumber }) => {
