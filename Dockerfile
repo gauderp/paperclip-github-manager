@@ -44,11 +44,9 @@ RUN mkdir -p /app/data/instances/default/secrets \
              /home/paperclip/.cursor \
              /home/paperclip/.local/bin
 
-COPY config.json /app/data/instances/default/config.json
-COPY master.key /app/data/instances/default/secrets/master.key
-
-# Stage plugins for runtime install
-COPY gaud_erp-paperclip-github-manager-1.1.0.tgz /app/plugins/github-manager.tgz
+# Seed config files (copied to persistent volume on first boot)
+COPY config.json /app/config-seed/config.json
+COPY master.key /app/config-seed/master.key
 
 # Give ownership to paperclip user
 RUN chown -R paperclip:paperclip /app /home/paperclip

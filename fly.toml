@@ -7,7 +7,8 @@ swap_size_mb = 512
 [env]
   NODE_ENV = "production"
   PORT = "3100"
-  NODE_OPTIONS = "--max-old-space-size=768"
+  NODE_OPTIONS = "--max-old-space-size=512"
+  HEARTBEAT_SCHEDULER_INTERVAL_MS = "86400000"
 
 [http_service]
   internal_port = 3100
@@ -16,18 +17,10 @@ swap_size_mb = 512
   auto_start_machines = true
   min_machines_running = 1
 
-  [http_service.concurrency]
-    type = "connections"
-    hard_limit = 25
-    soft_limit = 20
-
-[[http_service.checks]]
-  grace_period = "30s"
-  interval = "15s"
-  method = "GET"
-  path = "/"
-  timeout = "5s"
+[mounts]
+  source = "paperclip_data"
+  destination = "/app/data"
 
 [[vm]]
   size = "shared-cpu-2x"
-  memory = "1024mb"
+  memory = "2048mb"
