@@ -166,9 +166,21 @@ const plugin = definePlugin({
       return await generateCodeGraph(ctx, companyId as string, repoFullName as string);
     });
 
-    // ── Managed agent reconciliation ──
+    // ── Managed resource reconciliation ──
+    // Reconcile for existing companies on startup
+    const companies = await ctx.companies.list();
+    for (const company of companies) {
+      try {
+        await ctx.agents.managed.reconcile("github-reviewer", company.id);
+        await ctx.skills.managed.reconcile("github-codebase-access", company.id);
+      } catch (err) {
+        ctx.logger.warn(`Reconcile failed for company ${company.id}: ${err}`);
+      }
+    }
+
     ctx.events.on("company.created", async (event) => {
       await ctx.agents.managed.reconcile("github-reviewer", event.companyId);
+      await ctx.skills.managed.reconcile("github-codebase-access", event.companyId);
     });
   },
 
