@@ -3,6 +3,69 @@ import { useHostContext, usePluginAction } from "@paperclipai/plugin-sdk/ui";
 import { layoutStack, cardStyle, buttonStyle, primaryButtonStyle } from "./shared.js";
 import type { GraphData } from "../../graphify/graph-generator.js";
 
+function toObsidianCanvas(graph: GraphData): string {
+  const CARD_W = 250;
+  const CARD_H = 60;
+  const COL_GAP = 300;
+  const ROW_GAP = 100;
+
+  const typeOrder: Record<string, number> = { repo: 0, module: 1, file: 2, pr: 3, agent: 4 };
+  const grouped: Record<string, typeof graph.nodes> = {};
+  for (const n of graph.nodes) {
+    const t = n.type;
+    if (!grouped[t]) grouped[t] = [];
+    grouped[t].push(n);
+  }
+
+  const canvasNodes: Array<Record<string, unknown>> = [];
+  const posMap: Record<string, { x: number; y: number }> = {};
+  let col = 0;
+
+  for (const type of Object.keys(grouped).sort((a, b) => (typeOrder[a] ?? 9) - (typeOrder[b] ?? 9))) {
+    const items = grouped[type];
+    let row = 0;
+    for (const node of items) {
+      const x = col * COL_GAP;
+      const y = row * ROW_GAP;
+      posMap[node.id] = { x, y };
+      const color = type === "repo" ? "1" : type === "pr" ? "4" : type === "module" ? "3" : "0";
+      canvasNodes.push({
+        id: node.id,
+        type: "text",
+        x,
+        y,
+        width: CARD_W,
+        height: CARD_H,
+        color,
+        text: `**[${node.type}]** ${node.label}`,
+      });
+      row++;
+    }
+    col++;
+  }
+
+  const canvasEdges = graph.edges.map((e, i) => ({
+    id: `edge-${i}`,
+    fromNode: e.source,
+    toNode: e.target,
+    fromSide: "right",
+    toSide: "left",
+    label: e.label,
+  }));
+
+  return JSON.stringify({ nodes: canvasNodes, edges: canvasEdges }, null, 2);
+}
+
+function downloadFile(filename: string, content: string, mime = "application/json") {
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export function GitHubGraphsPage() {
   const context = useHostContext();
   const companyId = context.companyId;
@@ -37,6 +100,15 @@ export function GitHubGraphsPage() {
     setLoading(false);
   };
 
+  const handleExportObsidian = () => {
+    if (!graphData) return;
+    const canvas = toObsidianCanvas(graphData);
+    const name = graphData.repoFullName === "*"
+      ? "github-overview"
+      : graphData.repoFullName.replace("/", "-");
+    downloadFile(`${name}.canvas`, canvas);
+  };
+
   return (
     <div style={layoutStack}>
       <h2 style={{ margin: 0, fontSize: "18px" }}>Knowledge Graphs</h2>
@@ -60,11 +132,16 @@ export function GitHubGraphsPage() {
 
       {graphData && (
         <div style={cardStyle}>
-          <div style={{ marginBottom: "8px", fontSize: "13px" }}>
-            <strong>{graphData.level === "high" ? "Visão Geral" : graphData.repoFullName}</strong>
-            <span style={{ marginLeft: "8px", fontSize: "11px", opacity: 0.5 }}>
-              {graphData.nodes.length} nós · {graphData.edges.length} arestas · {new Date(graphData.generatedAt).toLocaleString()}
-            </span>
+          <div style={{ marginBottom: "8px", fontSize: "13px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div>
+              <strong>{graphData.level === "high" ? "Visão Geral" : graphData.repoFullName}</strong>
+              <span style={{ marginLeft: "8px", fontSize: "11px", opacity: 0.5 }}>
+                {graphData.nodes.length} nós · {graphData.edges.length} arestas · {new Date(graphData.generatedAt).toLocaleString()}
+              </span>
+            </div>
+            <button type="button" style={primaryButtonStyle} onClick={handleExportObsidian}>
+              Abrir no Obsidian
+            </button>
           </div>
           <div style={{ maxHeight: "400px", overflow: "auto", fontSize: "12px" }}>
             <div style={{ marginBottom: "8px" }}>
