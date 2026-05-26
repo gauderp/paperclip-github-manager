@@ -2,7 +2,7 @@ import type { PaperclipPluginManifestV1 } from "@paperclipai/plugin-sdk";
 
 const manifest: PaperclipPluginManifestV1 = {
   id: "cus.github-manager",
-  version: "1.5.0",
+  version: "1.6.0",
   apiVersion: 1,
   displayName: "GitHub Manager",
   description: "Manage GitHub repos, PRs, issues, agent code reviews, and knowledge graphs — all from Paperclip",
@@ -32,6 +32,7 @@ const manifest: PaperclipPluginManifestV1 = {
     "ui.detailTab.register",
     "ui.action.register",
     "instance.settings.register",
+    "skills.managed",
   ],
 
   instanceConfigSchema: {
@@ -188,6 +189,62 @@ const manifest: PaperclipPluginManifestV1 = {
       displayName: "GitHub Code Reviewer",
       role: "code-review",
       title: "Senior Code Reviewer",
+    },
+  ],
+
+  skills: [
+    {
+      skillKey: "github-codebase-access",
+      displayName: "GitHub Codebase Access",
+      description: "Provides agents with tools to read repository structure and files from GitHub without needing local filesystem access",
+      markdown: `# GitHub Codebase Access
+
+You have access to GitHub repositories through the GitHub Manager plugin tools. NEVER say you don't have access to the codebase.
+
+## Available Tools
+
+### 1. github_get_repo_structure
+Get the directory and file structure of a repository. **Always call this FIRST** before reading any files.
+
+Parameters:
+- \`repo_full_name\` (required): Repository in "owner/repo" format
+- \`refresh\` (optional): Set to true to regenerate from GitHub if cache is stale
+
+### 2. github_read_file_content
+Read the content of a specific file from a GitHub repository.
+
+Parameters:
+- \`owner\` (required): Repository owner (e.g. "gauderp")
+- \`repo\` (required): Repository name (e.g. "gaud-erp-api")
+- \`path\` (required): File path (e.g. "src/main/java/com/gaud/App.java")
+- \`ref\` (optional): Branch or commit SHA (defaults to main branch)
+
+### 3. github_get_pull_request_diff
+Get the unified diff of a pull request for code review.
+
+Parameters:
+- \`owner\`, \`repo\`, \`pull_number\`
+
+### 4. github_search_issues
+Search GitHub issues and PRs using GitHub search syntax.
+
+Parameters:
+- \`query\`: GitHub search query (e.g. "is:open label:bug")
+
+### 5. github_list_repositories
+List all tracked GitHub repositories (no parameters needed).
+
+## Mandatory Workflow
+
+1. **ALWAYS** start with \`github_get_repo_structure\` to understand the codebase layout
+2. Read only the files you actually need with \`github_read_file_content\`
+3. If the structure seems outdated, call \`github_get_repo_structure\` with \`refresh=true\`
+4. Never try to access the local filesystem for source code — always use these tools
+
+## Token Efficiency
+The structure cache returns directories and key files in a single call (~5-50KB).
+This replaces hundreds of file-listing API calls, saving 60-90% of tokens.
+`,
     },
   ],
 
