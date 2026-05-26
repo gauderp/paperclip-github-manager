@@ -45,8 +45,12 @@ if [ ! -f /app/data/instances/default/secrets/master.key ]; then
   echo "Master key seeded to persistent volume"
 fi
 
+# Persist ~/.paperclip on volume (plugins are installed to ~/.paperclip/plugins via npm)
+mkdir -p /app/data/dot-paperclip
+ln -sfn /app/data/dot-paperclip /home/paperclip/.paperclip
+
 # Ensure data dir is writable by paperclip user
-chown -R paperclip:paperclip /app/data
+chown -R paperclip:paperclip /app/data /home/paperclip/.paperclip
 
 # Start Paperclip
 exec gosu paperclip paperclipai run --data-dir /app/data --no-repair
