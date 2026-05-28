@@ -8,6 +8,7 @@ import type {
   PRWithRepo,
   TriageRule,
   TriageRuleInput,
+  GitHubWorkflowRun,
 } from "../types.js";
 
 type DB = PluginContext["db"];
@@ -331,5 +332,96 @@ function mapTriageRule(row: Record<string, unknown>): TriageRule {
     enabled: row.enabled as boolean,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
+  };
+}
+
+// ── Workflow Runs ──
+
+export async function upsertWorkflowRun(
+  db: DB,
+  run: Omit<GitHubWorkflowRun, "createdAt" | "updatedAt">,
+): Promise<void> {
+  const now = new Date().toISOString();
+  await db.execute(
+    `INSERT INTO ${S}.gh_workflow_runs
+       (id, repo_id, run_number, workflow_name, head_branch, head_sha, status, conclusion,
+        pr_number, logs_summary, analyzed_at, html_url, created_at, updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+     ON CONFLICT (id) DO UPDATE SET
+       status       = EXCLUDED.status,
+       conclusion   = EXCLUDED.conclusion,
+       logs_summary = EXCLUDED.logs_summary,
+       analyzed_at  = EXCLUDED.analyzed_at,
+       updated_at   = EXCLUDED.updated_at`,
+    [
+      run.id,
+      run.repoId,
+      run.runNumber,
+      run.workflowName,
+      run.headBranch,
+      run.headSha,
+      run.status,
+      run.conclusion,
+      run.prNumber,
+      run.logsSummary,
+      run.analyzedAt,
+      run.htmlUrl,
+      now,
+      now,
+    ],
+  );
+}
+
+export async function getWorkflowRun(
+  db: DB,
+  runId: number,
+): Promise<GitHubWorkflowRun | null> {
+  const rows = await db.query(
+    `SELECT * FROM ${S}.gh_workflow_runs WHERE id = $1`,
+    [runId],
+  );
+  return rows.length > 0 ? mapWorkflowRun(rows[0]) : null;
+}
+
+export async function listWorkflowRunsForPR(
+  db: DB,
+  prNumber: number,
+): Promise<GitHubWorkflowRun[]> {
+  const rows = await db.query(
+    `SELECT * FROM ${S}.gh_workflow_runs WHERE pr_number = $1 ORDER BY id DESC`,
+    [prNumber],
+  );
+  return rows.map(mapWorkflowRun);
+}
+
+export async function markWorkflowRunAnalyzed(
+  db: DB,
+  runId: number,
+  logsSummary: string,
+): Promise<void> {
+  await db.execute(
+    `UPDATE ${S}.gh_workflow_runs
+     SET logs_summary = $1, analyzed_at = $2, updated_at = $3
+     WHERE id = $4`,
+    [logsSummary, new Date().toISOString(), new Date().toISOString(), runId],
+  );
+}
+
+function mapWorkflowRun(row: Record<string, unknown>): GitHubWorkflowRun {
+  return {
+    id:           row.id as number,
+    repoId:       row.repo_id as number,
+    runNumber:    row.run_number as number,
+    workflowName: row.workflow_name as string,
+    headBranch:   row.head_branch as string | null,
+    headSha:      row.head_sha as string | null,
+    status:       row.status as string,
+    conclusion:   row.conclusion as string | null,
+    prNumber:     row.pr_number as number | null,
+    logsSummary:  row.logs_summary as string | null,
+    analyzedAt:   row.analyzed_at as string | null,
+    htmlUrl:      row.html_url as string,
+    createdAt:    row.created_at as string,
+    updatedAt:    row.updated_at as string,
   };
 }

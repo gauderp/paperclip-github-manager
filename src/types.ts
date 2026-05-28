@@ -128,3 +128,64 @@ export type ReviewGuidelines = {
   guidelines: string;
   updatedAt: string;
 };
+
+// ── CI/CD ──
+
+export type GitHubWorkflowRun = {
+  id: number;
+  repoId: number;
+  runNumber: number;
+  workflowName: string;
+  headBranch: string | null;
+  headSha: string | null;
+  status: string;
+  conclusion: string | null;
+  prNumber: number | null;
+  logsSummary: string | null;
+  analyzedAt: string | null;
+  htmlUrl: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type WorkflowJob = {
+  id: number;
+  runId: number;
+  name: string;
+  status: string;
+  conclusion: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  steps: WorkflowStep[];
+};
+
+export type WorkflowStep = {
+  name: string;
+  status: string;
+  conclusion: string | null;
+  number: number;
+  startedAt: string | null;
+  completedAt: string | null;
+};
+
+export type DeploymentStatus = {
+  id: number;
+  ref: string;
+  environment: string;
+  state: string;
+  description: string | null;
+  createdAt: string;
+  updatedAt: string;
+  statusUrl: string | null;
+};
+
+export type DeployGateResult = {
+  passed: boolean;
+  checks: DeployGateCheck[];
+};
+
+export type DeployGateCheck = {
+  name: string;
+  passed: boolean;
+  detail: string;
+};
