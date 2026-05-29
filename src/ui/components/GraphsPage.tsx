@@ -389,15 +389,15 @@ export function GitHubGraphsPage() {
                   {typeNodes.map((node) => (
                     <div key={node.id} style={{ padding: "1px 0", paddingLeft: "20px", opacity: 0.8 }}>
                       {node.label}
-                      {node.metadata.language && (
-                        <span style={{ marginLeft: "6px", opacity: 0.4, fontSize: "10px" }}>{node.metadata.language as string}</span>
-                      )}
-                      {node.metadata.size && (
+                      {node.metadata.language ? (
+                        <span style={{ marginLeft: "6px", opacity: 0.4, fontSize: "10px" }}>{String(node.metadata.language)}</span>
+                      ) : null}
+                      {node.metadata.size ? (
                         <span style={{ marginLeft: "6px", opacity: 0.4, fontSize: "10px" }}>{Math.round((node.metadata.size as number) / 1024)}KB</span>
-                      )}
-                      {node.metadata.author && (
-                        <span style={{ marginLeft: "6px", opacity: 0.4, fontSize: "10px" }}>by {node.metadata.author as string}</span>
-                      )}
+                      ) : null}
+                      {node.metadata.author ? (
+                        <span style={{ marginLeft: "6px", opacity: 0.4, fontSize: "10px" }}>by {String(node.metadata.author)}</span>
+                      ) : null}
                     </div>
                   ))}
                 </div>

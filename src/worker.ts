@@ -1,5 +1,6 @@
 import { definePlugin, runWorker } from "@paperclipai/plugin-sdk";
 import type { PluginContext } from "@paperclipai/plugin-sdk";
+import type { DecisionStatus, KnowledgeNodeType } from "./types.js";
 import { registerReviewTools } from "./review/review-tools.js";
 import { registerTriageTools } from "./triage/triage-tools.js";
 import { registerCITools } from "./ci/ci-tools.js";
@@ -151,7 +152,7 @@ const plugin = definePlugin({
       }
       if (!resolvedRepoId) return { decisions: [] };
       const decisions = await listDecisions(ctx.db, resolvedRepoId, {
-        status: status as string | undefined,
+        status: status as DecisionStatus | undefined,
         search: search as string | undefined,
       });
       return { decisions };
@@ -165,7 +166,7 @@ const plugin = definePlugin({
         resolvedRepoId = repo.id;
       }
       if (!resolvedRepoId) return { nodes: [], edges: [] };
-      const nodes = await getKnowledgeNodes(ctx.db, resolvedRepoId, nodeType as string | undefined);
+      const nodes = await getKnowledgeNodes(ctx.db, resolvedRepoId, nodeType as KnowledgeNodeType | undefined);
       const edges = await getKnowledgeEdges(ctx.db, resolvedRepoId, minWeight as number | undefined);
       return { nodes, edges };
     });
@@ -375,7 +376,7 @@ const plugin = definePlugin({
           `5. \`github_get_contributor_stats\` with owner="${owner}", repo="${repoName}", since="${new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)}"`,
           `6. Produce the onboarding guide as your card resolution.`,
         ].join("\n"),
-        originKind: "plugin_github_onboarding",
+        originKind: "plugin:github_onboarding",
         originId: `onboarding:${repoFullName}`,
       });
       return { ok: true, issueId: issue.id };

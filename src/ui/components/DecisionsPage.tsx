@@ -44,7 +44,7 @@ export function GitHubDecisionsPage() {
           status: statusFilter === "all" ? undefined : statusFilter,
           search: search.trim() || undefined,
         }
-      : null,
+      : undefined,
   );
 
   const decisions = data?.decisions ?? [];
