@@ -2,7 +2,7 @@ import type { PaperclipPluginManifestV1 } from "@paperclipai/plugin-sdk";
 
 const manifest: PaperclipPluginManifestV1 = {
   id: "cus.github-manager",
-  version: "3.0.0",
+  version: "3.1.0",
   apiVersion: 1,
   displayName: "GitHub Manager",
   description: "Manage GitHub repos, PRs, issues, agent code reviews, and knowledge graphs — all from Paperclip",
@@ -63,6 +63,12 @@ const manifest: PaperclipPluginManifestV1 = {
         title: "Webhook Secret",
         description: "Opcional. Cole o mesmo secret configurado no GitHub webhook para validar autenticidade dos eventos.",
       },
+      ciCompanionEnabled: {
+        type: "boolean",
+        title: "CI/CD Companion",
+        description: "Automatically analyze CI/CD failures and post analysis on the associated PR when a workflow run fails.",
+        default: false,
+      },
       webhookInfo: {
         type: "string",
         title: "Webhook URL (Auto Review)",
@@ -107,7 +113,7 @@ const manifest: PaperclipPluginManifestV1 = {
     {
       endpointKey: "github-events",
       displayName: "GitHub Events",
-      description: "Receives GitHub webhook events (pull_request, issues)",
+      description: "Receives GitHub webhook events (pull_request, issues, workflow_run). Configure in GitHub: Settings → Webhooks → Add webhook. Events: Pull requests, Issues, Workflow runs. Content type: application/json.",
     },
   ],
 
@@ -336,6 +342,80 @@ const manifest: PaperclipPluginManifestV1 = {
         required: ["owner", "repo", "pull_number", "body"],
       },
     },
+    {
+      name: "github_list_workflow_runs",
+      displayName: "List Workflow Runs",
+      description: "List recent workflow runs for a repository, optionally filtered by branch or status",
+      parametersSchema: {
+        type: "object",
+        properties: {
+          owner:    { type: "string" },
+          repo:     { type: "string" },
+          branch:   { type: "string" },
+          status:   { type: "string", enum: ["completed", "in_progress", "queued", "failure", "success"] },
+          per_page: { type: "number" },
+        },
+        required: ["owner", "repo"],
+      },
+    },
+    {
+      name: "github_get_workflow_run_jobs",
+      displayName: "Get Workflow Run Jobs",
+      description: "List jobs for a workflow run with individual step status",
+      parametersSchema: {
+        type: "object",
+        properties: {
+          owner:  { type: "string" },
+          repo:   { type: "string" },
+          run_id: { type: "number" },
+        },
+        required: ["owner", "repo", "run_id"],
+      },
+    },
+    {
+      name: "github_get_workflow_run_logs",
+      displayName: "Get Workflow Run Logs",
+      description: "Download and parse logs for a specific workflow run. Returns truncated logs focused on error sections.",
+      parametersSchema: {
+        type: "object",
+        properties: {
+          owner:    { type: "string" },
+          repo:     { type: "string" },
+          run_id:   { type: "number" },
+          job_name: { type: "string" },
+        },
+        required: ["owner", "repo", "run_id"],
+      },
+    },
+    {
+      name: "github_rerun_workflow",
+      displayName: "Re-run Workflow",
+      description: "Re-run a failed workflow run (only failed jobs by default)",
+      parametersSchema: {
+        type: "object",
+        properties: {
+          owner:       { type: "string" },
+          repo:        { type: "string" },
+          run_id:      { type: "number" },
+          only_failed: { type: "boolean" },
+        },
+        required: ["owner", "repo", "run_id"],
+      },
+    },
+    {
+      name: "github_get_deployment_status",
+      displayName: "Get Deployment Status",
+      description: "Get deployment status for a ref (branch, tag, or SHA)",
+      parametersSchema: {
+        type: "object",
+        properties: {
+          owner: { type: "string" },
+          repo:  { type: "string" },
+          ref:   { type: "string" },
+        },
+        required: ["owner", "repo", "ref"],
+      },
+    },
   ],
 
   agents: [
@@ -453,6 +533,96 @@ If you cannot determine classification with confidence:
 `,
       },
     },
+    {
+      agentKey: "ci-companion",
+      displayName: "CI/CD Companion",
+      role: "ci-analysis",
+      title: "CI/CD Failure Analyst",
+      capabilities: "Analyzes failing GitHub Actions workflow runs, identifies root causes from logs, correlates failures with PR changes, posts analysis comments, and validates deploy readiness.",
+      instructions: {
+        entryFile: "CI_COMPANION.md",
+        content: `# CI/CD Companion
+
+You are an expert CI/CD analyst. You investigate failing GitHub Actions workflow runs, identify root causes, and help developers fix them quickly.
+
+## Available Tools
+
+### CI/CD Tools
+- **github_list_workflow_runs** — List recent workflow runs for a repo. Params: \`owner\`, \`repo\`, optional \`branch\`, \`status\`, \`per_page\`
+- **github_get_workflow_run_jobs** — Get job list and step status for a run. Params: \`owner\`, \`repo\`, \`run_id\`
+- **github_get_workflow_run_logs** — Download and parse logs for a run. Params: \`owner\`, \`repo\`, \`run_id\`, optional \`job_name\`
+- **github_rerun_workflow** — Re-run a failed run. Params: \`owner\`, \`repo\`, \`run_id\`, optional \`only_failed\` (default true)
+- **github_get_deployment_status** — Get deployment status for a ref. Params: \`owner\`, \`repo\`, \`ref\`
+
+### Code Access Tools (from Phase 1)
+- **github_get_pull_request_diff** — Get PR diff. Params: \`owner\`, \`repo\`, \`pull_number\`
+- **github_read_file_content** — Read a file. Params: \`owner\`, \`repo\`, \`path\`, optional \`ref\`
+- **github_get_repo_structure** — Get directory layout. Params: \`repo_full_name\`
+
+### Communication Tools (from Phase 1)
+- **github_add_comment** — Post a comment on an issue or PR. Params: \`owner\`, \`repo\`, \`issue_number\`, \`body\`
+- **github_get_pr_checks** — Get CI check status for a PR. Params: \`owner\`, \`repo\`, \`pull_number\`
+
+## Analysis Workflow
+
+When you receive a card about a CI failure:
+
+1. **Parse the card description** to extract: \`owner\`, \`repo\`, \`run_id\`, \`head_branch\`, and \`pr_number\` (if present).
+
+2. **Get job list**: \`github_get_workflow_run_jobs\` with the \`run_id\` → identify which jobs have \`conclusion: "failure"\`.
+
+3. **Get logs for the failing job**: \`github_get_workflow_run_logs\` with \`run_id\` and \`job_name\` of the first failed job → extract the error.
+
+4. **If associated with a PR** (pr_number is present):
+   - \`github_get_pull_request_diff\` → correlate the error with the changed code.
+   - \`github_read_file_content\` → read the specific file that caused the error.
+
+5. **Post analysis** on the PR using \`github_add_comment\` with:
+   - One-line summary of the error type (compilation, test, lint, etc.)
+   - Exact file and line number if identifiable
+   - Root cause explanation in 2-3 sentences
+   - Concrete fix suggestion with a code snippet when possible
+   - Whether this looks flaky (if the error is unrelated to the PR changes)
+   - Call to action: "Want me to re-run? Reply with 'rerun' and I'll trigger it."
+
+6. **Flaky test detection**: If the error appears in infrastructure (network, timeouts, external services) or in tests that are unrelated to the changed files, label it as potentially flaky and suggest \`github_rerun_workflow\` with \`only_failed: true\`.
+
+## Failure Priority Order
+
+Prioritize analysis in this order:
+1. Compilation / type errors — always developer's fault, must fix
+2. Test failures in files touched by the PR — likely related, investigate
+3. Test failures in unrelated files — possibly flaky, suggest rerun first
+4. Lint / format failures — easy fix, provide the exact command to run
+5. Infrastructure failures (Docker, network) — likely flaky, suggest rerun
+
+## Comment Format
+
+\`\`\`markdown
+## CI Analysis: {workflow_name} #{run_number}
+
+**Status:** FAILED — {job_name} → {step_name}
+
+### Error
+\\\`\\\`\\\`
+{exact error lines from logs}
+\\\`\\\`\\\`
+
+### Root Cause
+{explanation}
+
+### Suggested Fix
+{fix description with code snippet if applicable}
+
+### Assessment
+{RELATED_TO_PR | LIKELY_FLAKY | INFRASTRUCTURE}
+
+---
+*Reply with "rerun" to trigger re-run of failed jobs only.*
+\`\`\`
+`,
+      },
+    },
   ],
 
   skills: [
@@ -542,6 +712,51 @@ Apply labels that exist in the repo. Common patterns:
 - Fallback: \`needs-triage\` when unsure
 
 If the needed label doesn't exist in the repo, skip it and note it in the comment.
+`,
+    },
+    {
+      skillKey: "ci-analysis",
+      displayName: "CI/CD Analysis",
+      description: "Teaches agents to analyze failing CI/CD workflow runs, correlate failures with PR changes, and post actionable fix suggestions",
+      markdown: `# CI/CD Analysis
+
+You have CI/CD monitoring tools available through the GitHub Manager plugin. Use them to investigate and explain failing workflow runs.
+
+## Available CI/CD Tools
+
+- **github_list_workflow_runs** — List recent runs. Params: \`owner\`, \`repo\`, optional \`branch\`, \`status\` (completed/in_progress/queued/failure/success), \`per_page\` (max 30)
+- **github_get_workflow_run_jobs** — Jobs + steps for a run. Params: \`owner\`, \`repo\`, \`run_id\`
+- **github_get_workflow_run_logs** — Parsed logs (ZIP extracted, tail-focused). Params: \`owner\`, \`repo\`, \`run_id\`, optional \`job_name\`
+- **github_rerun_workflow** — Re-run the run. Params: \`owner\`, \`repo\`, \`run_id\`, optional \`only_failed\` (default: true)
+- **github_get_deployment_status** — Deployment state for a ref. Params: \`owner\`, \`repo\`, \`ref\`
+
+## CI Analysis Workflow
+
+1. \`github_get_workflow_run_jobs\` → find failed jobs
+2. \`github_get_workflow_run_logs\` with the failed job name → get the error
+3. \`github_get_pull_request_diff\` → correlate with PR changes (if PR is known)
+4. \`github_read_file_content\` → read the failing file for context
+5. \`github_add_comment\` on the PR → post structured analysis
+
+## Log Parsing Tips
+
+- Logs are returned with the tail of each step (last ~5000 chars per step)
+- Error patterns to look for:
+  - TypeScript: \`error TS\`, \`Cannot find\`, \`Type '...' is not assignable\`
+  - Jest/Vitest: \`FAIL\`, \`● \`, \`Expected:\`, \`Received:\`
+  - ESLint: \`error  \` (two spaces), \`✖\`
+  - Docker build: \`ERROR\`, \`failed to solve\`
+  - npm install: \`npm ERR!\`, \`ERESOLVE\`
+- The \`job_name\` filter dramatically reduces token usage — always use it when you know which job failed
+
+## Deploy Gate Workflow
+
+When asked to validate deploy readiness:
+1. \`github_get_pr_checks\` → verify all checks pass
+2. \`github_list_workflow_runs\` with \`status: "completed"\` on the branch → confirm no recent failures
+3. \`github_get_deployment_status\` → check last deployment state
+4. \`github_get_pull_request_diff\` + \`github_read_file_content\` → scan for sensitive files (.env, credentials)
+5. Report each gate as PASS/FAIL with detail
 `,
     },
   ],
