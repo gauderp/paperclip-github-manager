@@ -11,6 +11,13 @@ import type {
   GitHubWorkflowRun,
   PRMetrics,
   StandupReport,
+  KnowledgeNode,
+  KnowledgeEdge,
+  KnowledgeNodeType,
+  KnowledgeEdgeType,
+  DecisionLogEntry,
+  DecisionStatus,
+  DecisionSourceType,
 } from "../types.js";
 
 type DB = PluginContext["db"];
@@ -577,5 +584,186 @@ function mapStandup(row: Record<string, unknown>): StandupReport {
     contributors: JSON.parse((row.contributors as string) || "[]"),
     highlights: JSON.parse((row.highlights as string) || "[]"),
     generatedAt: row.generated_at as string,
+  };
+}
+
+// ── Knowledge Nodes ──
+
+export async function upsertKnowledgeNode(
+  db: DB,
+  node: Omit<KnowledgeNode, "createdAt" | "updatedAt">,
+): Promise<void> {
+  const now = new Date().toISOString();
+  await db.execute(
+    `INSERT INTO ${S}.gh_knowledge_nodes (id, repo_id, node_type, name, metadata, first_seen_pr, last_updated_pr, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+     ON CONFLICT (id) DO UPDATE SET
+       metadata = EXCLUDED.metadata,
+       last_updated_pr = EXCLUDED.last_updated_pr,
+       updated_at = EXCLUDED.updated_at`,
+    [
+      node.id, node.repoId, node.nodeType, node.name,
+      JSON.stringify(node.metadata), node.firstSeenPr, node.lastUpdatedPr,
+      now, now,
+    ],
+  );
+}
+
+export async function getKnowledgeNodes(
+  db: DB,
+  repoId: number,
+  nodeType?: KnowledgeNodeType,
+): Promise<KnowledgeNode[]> {
+  let sql = `SELECT * FROM ${S}.gh_knowledge_nodes WHERE repo_id = $1`;
+  const params: unknown[] = [repoId];
+  if (nodeType) {
+    sql += ` AND node_type = $2`;
+    params.push(nodeType);
+  }
+  sql += " ORDER BY name";
+  const rows = await db.query(sql, params);
+  return rows.map(mapKnowledgeNode);
+}
+
+function mapKnowledgeNode(row: Record<string, unknown>): KnowledgeNode {
+  return {
+    id: row.id as string,
+    repoId: row.repo_id as number,
+    nodeType: row.node_type as KnowledgeNodeType,
+    name: row.name as string,
+    metadata: JSON.parse((row.metadata as string) || "{}"),
+    firstSeenPr: row.first_seen_pr as number | null,
+    lastUpdatedPr: row.last_updated_pr as number | null,
+    createdAt: row.created_at as string,
+    updatedAt: row.updated_at as string,
+  };
+}
+
+// ── Knowledge Edges ──
+
+export async function upsertKnowledgeEdge(
+  db: DB,
+  edge: Omit<KnowledgeEdge, "createdAt">,
+): Promise<void> {
+  const now = new Date().toISOString();
+  await db.execute(
+    `INSERT INTO ${S}.gh_knowledge_edges (id, repo_id, source_node_id, target_node_id, edge_type, weight, first_seen_pr, created_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+     ON CONFLICT (id) DO UPDATE SET
+       weight = ${S}.gh_knowledge_edges.weight + 1`,
+    [
+      edge.id, edge.repoId, edge.sourceNodeId, edge.targetNodeId,
+      edge.edgeType, edge.weight, edge.firstSeenPr, now,
+    ],
+  );
+}
+
+export async function getKnowledgeEdges(
+  db: DB,
+  repoId: number,
+  minWeight?: number,
+): Promise<KnowledgeEdge[]> {
+  let sql = `SELECT * FROM ${S}.gh_knowledge_edges WHERE repo_id = $1`;
+  const params: unknown[] = [repoId];
+  if (minWeight !== undefined) {
+    sql += ` AND weight >= $2`;
+    params.push(minWeight);
+  }
+  sql += " ORDER BY weight DESC";
+  const rows = await db.query(sql, params);
+  return rows.map(mapKnowledgeEdge);
+}
+
+function mapKnowledgeEdge(row: Record<string, unknown>): KnowledgeEdge {
+  return {
+    id: row.id as string,
+    repoId: row.repo_id as number,
+    sourceNodeId: row.source_node_id as string,
+    targetNodeId: row.target_node_id as string,
+    edgeType: row.edge_type as KnowledgeEdgeType,
+    weight: row.weight as number,
+    firstSeenPr: row.first_seen_pr as number | null,
+    createdAt: row.created_at as string,
+  };
+}
+
+// ── Decision Log ──
+
+export async function insertDecision(
+  db: DB,
+  entry: Omit<DecisionLogEntry, "id" | "createdAt" | "updatedAt">,
+): Promise<void> {
+  const now = new Date().toISOString();
+  await db.execute(
+    `INSERT INTO ${S}.gh_decision_log
+       (repo_id, adr_number, title, context_text, decision_text, consequences_text,
+        status, source_type, source_number, source_url, decided_at, created_at, updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+     ON CONFLICT (repo_id, adr_number) DO UPDATE SET
+       title = EXCLUDED.title,
+       context_text = EXCLUDED.context_text,
+       decision_text = EXCLUDED.decision_text,
+       consequences_text = EXCLUDED.consequences_text,
+       status = EXCLUDED.status,
+       source_url = EXCLUDED.source_url,
+       decided_at = EXCLUDED.decided_at,
+       updated_at = EXCLUDED.updated_at`,
+    [
+      entry.repoId, entry.adrNumber, entry.title, entry.contextText,
+      entry.decisionText, entry.consequencesText, entry.status,
+      entry.sourceType, entry.sourceNumber, entry.sourceUrl,
+      entry.decidedAt, now, now,
+    ],
+  );
+}
+
+export async function listDecisions(
+  db: DB,
+  repoId: number,
+  filters?: { status?: DecisionStatus; search?: string },
+): Promise<DecisionLogEntry[]> {
+  let sql = `SELECT * FROM ${S}.gh_decision_log WHERE repo_id = $1`;
+  const params: unknown[] = [repoId];
+  let idx = 2;
+
+  if (filters?.status) {
+    sql += ` AND status = $${idx++}`;
+    params.push(filters.status);
+  }
+  if (filters?.search) {
+    sql += ` AND (title LIKE $${idx} OR context_text LIKE $${idx} OR decision_text LIKE $${idx})`;
+    params.push(`%${filters.search}%`);
+    idx++;
+  }
+  sql += " ORDER BY adr_number DESC";
+
+  const rows = await db.query(sql, params);
+  return rows.map(mapDecision);
+}
+
+export async function getNextAdrNumber(db: DB, repoId: number): Promise<number> {
+  const rows = await db.query(
+    `SELECT COALESCE(MAX(adr_number), 0) + 1 AS next_num FROM ${S}.gh_decision_log WHERE repo_id = $1`,
+    [repoId],
+  );
+  return (rows[0]?.next_num as number) ?? 1;
+}
+
+function mapDecision(row: Record<string, unknown>): DecisionLogEntry {
+  return {
+    id: row.id as number,
+    repoId: row.repo_id as number,
+    adrNumber: row.adr_number as number,
+    title: row.title as string,
+    contextText: row.context_text as string | null,
+    decisionText: row.decision_text as string | null,
+    consequencesText: row.consequences_text as string | null,
+    status: row.status as DecisionStatus,
+    sourceType: row.source_type as DecisionSourceType,
+    sourceNumber: row.source_number as number,
+    sourceUrl: row.source_url as string | null,
+    decidedAt: row.decided_at as string | null,
+    createdAt: row.created_at as string,
+    updatedAt: row.updated_at as string,
   };
 }
