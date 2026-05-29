@@ -265,3 +265,83 @@ export type GitHubCommit = {
   date: string;
   url: string;
 };
+
+// ── Phase 4: Knowledge Management ──
+
+export type KnowledgeNodeType =
+  | "module"
+  | "pattern"
+  | "dependency"
+  | "api_endpoint"
+  | "component"
+  | "service";
+
+export type KnowledgeEdgeType =
+  | "imports"
+  | "calls"
+  | "extends"
+  | "configures"
+  | "tests"
+  | "documents";
+
+export type KnowledgeNode = {
+  id: string;
+  repoId: number;
+  nodeType: KnowledgeNodeType;
+  name: string;
+  metadata: Record<string, unknown>;
+  firstSeenPr: number | null;
+  lastUpdatedPr: number | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type KnowledgeEdge = {
+  id: string;
+  repoId: number;
+  sourceNodeId: string;
+  targetNodeId: string;
+  edgeType: KnowledgeEdgeType;
+  weight: number;
+  firstSeenPr: number | null;
+  createdAt: string;
+};
+
+export type DecisionStatus = "proposed" | "accepted" | "deprecated" | "superseded";
+export type DecisionSourceType = "pull_request" | "issue" | "discussion";
+
+export type DecisionLogEntry = {
+  id: number;
+  repoId: number;
+  adrNumber: number;
+  title: string;
+  contextText: string | null;
+  decisionText: string | null;
+  consequencesText: string | null;
+  status: DecisionStatus;
+  sourceType: DecisionSourceType;
+  sourceNumber: number;
+  sourceUrl: string | null;
+  decidedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type KnowledgeGraphData = {
+  nodes: KnowledgeNode[];
+  edges: KnowledgeEdge[];
+  repoId: number;
+  repoFullName: string;
+  generatedAt: string;
+};
+
+export type GitHubDiscussion = {
+  id: string;
+  number: number;
+  title: string;
+  body: string;
+  category: { name: string; slug: string };
+  author: { login: string };
+  createdAt: string;
+  url: string;
+};
